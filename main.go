@@ -15,45 +15,36 @@ const indexDirectory string = "/Users/parkeroth/Desktop/testout"
 func getAlbumIndex(s *pl.Service) map[string]map[string]bool {
 	log.Print("Getting album index")
 
-	alr, err := s.Albums.List().Do()
+	as, err := getAlbums(s, nil, "")
 	if err != nil {
 		log.Fatalf("Unable to call list: %v", err)
-	}
-
-	if alr.NextPageToken != "" {
-		// TODO: handle page tokens
-		log.Print("WARNING: not handling page token")
 	}
 
 	out := make(map[string]map[string]bool)
 
 	// TODO: make this multi threaded
 
-	as := make(map[string]bool)
+	ats := make(map[string]bool)
 
-	for _, a := range alr.Albums {
-		if _, ok := as[a.Title]; ok {
+	for _, a := range as {
+		if _, ok := ats[a.Title]; ok {
 			// TODO: handle duplicate album titles
 			log.Printf("WARNING: skipping duplicate album %s", a.Title)
 			continue
 		}
-		as[a.Title] = true
+		ats[a.Title] = true
 
-		log.Printf("Getting images for album: %s", a.Title)
-		sreq := &pl.SearchMediaItemsRequest{
-			AlbumId: a.Id,
-		}
-		sresp, err := s.MediaItems.Search(sreq).Do()
+		ifns, err := getImageFilenames(s, a, nil, "")
 		if err != nil {
-			log.Fatalf("Unable to list items for album: %v", err)
+			log.Fatalf("Unable to call image search: %v", err)
 		}
-		for _, mi := range sresp.MediaItems {
-			as, ok := out[mi.Filename]
+		for _, fn := range ifns {
+			as, ok := out[fn]
 			if !ok {
 				as = make(map[string]bool)
-				out[mi.Filename] = as
+				out[fn] = as
 			}
-			out[mi.Filename][a.Title] = true
+			out[fn][a.Title] = true
 		}
 	}
 
