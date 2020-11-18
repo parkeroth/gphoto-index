@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,11 +11,7 @@ import (
 	pl "github.com/gphotosuploader/googlemirror/api/photoslibrary/v1"
 )
 
-const maxAlbums int = 6
-const imageDirectory string = "/Users/parkeroth/Desktop/testdata"
-const indexDirectory string = "/Users/parkeroth/Desktop/testout"
-
-func getAlbumIndex(s *pl.Service) map[string]*[]string {
+func getAlbumIndex(s *pl.Service, maxAlbums int) map[string]*[]string {
 	log.Print("Getting album index")
 
 	as, err := getAlbums(s, nil, "")
@@ -26,7 +23,7 @@ func getAlbumIndex(s *pl.Service) map[string]*[]string {
 	out := make(map[string]*[]string)
 
 	for i, a := range as {
-		if i > maxAlbums {
+		if maxAlbums > 0 && i > maxAlbums {
 			log.Printf("WARNING: reached max album count %d", maxAlbums)
 			break
 		}
@@ -99,14 +96,14 @@ func getDirectoryIndex(root string) map[string]map[string]bool {
 	return out
 }
 
-func getOps(s *pl.Service) []operation {
+func getOps(s *pl.Service, indexDirectory string, imageDirectory string, maxAlbums int) []operation {
 	di := getDirectoryIndex(indexDirectory)
 	ips := getImageIndex(imageDirectory)
 
 	// TODO: support date index (i.e., year or month)
 
 	var ops []operation
-	for at, ifns := range getAlbumIndex(s) {
+	for at, ifns := range getAlbumIndex(s, maxAlbums) {
 		lns, ok := di[at]
 		if !ok {
 			// Need directory for the album
@@ -159,7 +156,21 @@ func getOps(s *pl.Service) []operation {
 	return ops
 }
 
+var (
+	indexDirFlag  = flag.String("indexdir", "", "where the index will be created")
+	imageDirFlag  = flag.String("imagedir", "", "where the images are located")
+	maxAlbumsFlag = flag.Int("maxalbums", -1, "max number of albums to index")
+)
+
 func main() {
+	flag.Parse()
+	if *indexDirFlag == "" {
+		log.Fatalf("Please specify the index directory via --indexdir")
+	}
+	if *imageDirFlag == "" {
+		log.Fatalf("Please specify the image directory via --imagedir")
+	}
+
 	log.Print("Starting indexer")
 
 	client := getClient(pl.PhotoslibraryReadonlyScope)
@@ -170,9 +181,9 @@ func main() {
 		log.Print("Established Photos API client.")
 	}
 
-	for _, o := range getOps(s) {
+	for _, o := range getOps(s, *indexDirFlag, *imageDirFlag, *maxAlbumsFlag) {
 		log.Printf("OP: %s", o.log())
-		if err := o.run(indexDirectory); err != nil {
+		if err := o.run(*indexDirFlag); err != nil {
 			log.Printf("Failed running: %s", o.log())
 		}
 	}
