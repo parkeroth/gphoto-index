@@ -32,7 +32,7 @@ func getAlbums(s *pl.Service, ks []albumKey, pt string) ([]albumKey, error) {
 	}
 
 	if alr.NextPageToken == "" {
-		log.Printf("Found %s albums", len(ks))
+		log.Printf("Found %d albums", len(ks))
 		return ks, nil
 	}
 	return getAlbums(s, ks, alr.NextPageToken)

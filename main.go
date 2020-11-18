@@ -9,10 +9,11 @@ import (
 	pl "github.com/gphotosuploader/googlemirror/api/photoslibrary/v1"
 )
 
+const maxAlbums int = 6
 const imageDirectory string = "/Users/parkeroth/Desktop/testdata"
 const indexDirectory string = "/Users/parkeroth/Desktop/testout"
 
-func getAlbumIndex(s *pl.Service) map[string]map[string]bool {
+func getAlbumIndex(s *pl.Service) map[string][]string {
 	log.Print("Getting album index")
 
 	as, err := getAlbums(s, nil, "")
@@ -20,44 +21,43 @@ func getAlbumIndex(s *pl.Service) map[string]map[string]bool {
 		log.Fatalf("Unable to call list: %v", err)
 	}
 
-	out := make(map[string]map[string]bool)
+	out := make(map[string][]string)
 
 	// TODO: make this multi threaded
 
-	ats := make(map[string]bool)
-
-	for _, a := range as {
-		if _, ok := ats[a.Title]; ok {
+	for i, a := range as {
+		if i > maxAlbums {
+			log.Printf("WARNING: reached max album count %d", maxAlbums)
+			break
+		}
+		if _, ok := out[a.Title]; ok {
 			// TODO: handle duplicate album titles
 			log.Printf("WARNING: skipping duplicate album %s", a.Title)
 			continue
 		}
-		ats[a.Title] = true
 
 		ifns, err := getImageFilenames(s, a, nil, "")
-		if err != nil {
+		if err == nil {
+			out[a.Title] = ifns
+		} else {
 			log.Fatalf("Unable to call image search: %v", err)
-		}
-		for _, fn := range ifns {
-			as, ok := out[fn]
-			if !ok {
-				as = make(map[string]bool)
-				out[fn] = as
-			}
-			out[fn][a.Title] = true
 		}
 	}
 
 	return out
 }
 
-func getImagePaths(root string) []string {
-	log.Print("Getting image paths")
-
-	out := []string{}
+func getImageIndex(root string) map[string]string {
+	out := make(map[string]string)
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		out = append(out, path)
+		fn := filepath.Base(path)
+		if _, ok := out[fn]; ok {
+			// TODO: handle duplicate filenames
+			log.Printf("WARNING: skipping duplicate image %s", fn)
+			return nil
+		}
+		out[fn] = path
 		return nil
 	})
 	if err != nil {
@@ -67,6 +67,7 @@ func getImagePaths(root string) []string {
 	return out
 }
 
+// getDirectoryIndex returns a map[directory]map[filename]bool
 func getDirectoryIndex(root string) map[string]map[string]bool {
 	log.Printf("Scanning local index")
 
@@ -93,66 +94,59 @@ func getDirectoryIndex(root string) map[string]map[string]bool {
 
 func getOps(s *pl.Service) []operation {
 	di := getDirectoryIndex(indexDirectory)
-	ips := getImagePaths(imageDirectory)
-	ai := getAlbumIndex(s)
+	ips := getImageIndex(imageDirectory)
+
+	// TODO: support date index (i.e., year or month)
 
 	var ops []operation
-	for _, ip := range ips {
-		fn := filepath.Base(ip)
-		if as, ok := ai[fn]; ok && len(as) > 0 {
-			// Local image is in an album
-			for a, _ := range as {
-				is, ok := di[a]
-				if !ok {
-					// Need directory for the album
-					ops = append(ops, createAlbumDirectory{
-						albumTitle: a,
-					})
-					// Add fake entry to index to prevent duplicate op
-					di[a] = make(map[string]bool)
-				}
-				if !ok || !is[fn] {
-					// We either didn't have a directory or there wasn't a link
-					// Either way we need to add one
-					ops = append(ops, addAlbumLink{
-						albumTitle: a,
-						imagePath:  ip,
-						filename:   fn,
-					})
-				}
-				if ok {
-					delete(is, fn)
-					if len(is) == 0 {
-						delete(di, a)
-					}
-				}
-				delete(as, a)
+	for at, ifns := range getAlbumIndex(s) {
+		lns, ok := di[at]
+		if !ok {
+			// Need directory for the album
+			ops = append(ops, createAlbumDirectory{
+				albumTitle: at,
+			})
+			lns = make(map[string]bool)
+		}
+		mis := 0
+		for _, ifn := range ifns {
+			if _, ok := lns[ifn]; ok {
+				// Already have symlink
+				delete(lns, ifn)
+				continue
 			}
-			if len(as) == 0 {
-				delete(ai, fn)
+			if ip, ok := ips[ifn]; ok {
+				ops = append(ops, addAlbumLink{
+					albumTitle: at,
+					imagePath:  ip,
+					filename:   ifn,
+				})
+			} else {
+				mis += 1
 			}
 		}
-		// TODO: support date index (i.e., year or month)
+		if mis > 0 {
+			log.Printf("Missing %d images for album %s", mis, at)
+		}
+		for ln, _ := range lns {
+			ops = append(ops, removeAlbumLink{
+				albumTitle: at,
+				filename:   filepath.Base(ln),
+			})
+		}
+		delete(di, at)
 	}
 
-	for a, is := range di {
-		for i, _ := range is {
+	for at, lns := range di {
+		for ln, _ := range lns {
 			ops = append(ops, removeAlbumLink{
-				albumTitle: a,
-				filename:   filepath.Base(i),
+				albumTitle: at,
+				filename:   filepath.Base(ln),
 			})
 		}
 		ops = append(ops, removeAlbumDirectory{
-			albumTitle: a,
+			albumTitle: at,
 		})
-	}
-
-	mis := 0
-	for _, as := range ai {
-		mis += len(as)
-	}
-	if mis > 0 {
-		log.Printf("Missing %d images", mis)
 	}
 
 	return ops
