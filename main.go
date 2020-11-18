@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	pl "github.com/gphotosuploader/googlemirror/api/photoslibrary/v1"
 )
@@ -13,7 +14,7 @@ const maxAlbums int = 6
 const imageDirectory string = "/Users/parkeroth/Desktop/testdata"
 const indexDirectory string = "/Users/parkeroth/Desktop/testout"
 
-func getAlbumIndex(s *pl.Service) map[string][]string {
+func getAlbumIndex(s *pl.Service) map[string]*[]string {
 	log.Print("Getting album index")
 
 	as, err := getAlbums(s, nil, "")
@@ -21,9 +22,8 @@ func getAlbumIndex(s *pl.Service) map[string][]string {
 		log.Fatalf("Unable to call list: %v", err)
 	}
 
-	out := make(map[string][]string)
-
-	// TODO: make this multi threaded
+	var wg sync.WaitGroup
+	out := make(map[string]*[]string)
 
 	for i, a := range as {
 		if i > maxAlbums {
@@ -36,14 +36,21 @@ func getAlbumIndex(s *pl.Service) map[string][]string {
 			continue
 		}
 
-		ifns, err := getImageFilenames(s, a, nil, "")
-		if err == nil {
-			out[a.Title] = ifns
-		} else {
-			log.Fatalf("Unable to call image search: %v", err)
-		}
+		wg.Add(1)
+		fns := []string{}
+		go func(a albumKey, fns *[]string) {
+			ifns, err := getImageFilenames(s, a, nil, "")
+			if err == nil {
+				*fns = ifns
+			} else {
+				log.Fatalf("Unable to call image search: %v", err)
+			}
+			wg.Done()
+		}(a, &fns)
+		out[a.Title] = &fns
 	}
 
+	wg.Wait()
 	return out
 }
 
@@ -109,7 +116,7 @@ func getOps(s *pl.Service) []operation {
 			lns = make(map[string]bool)
 		}
 		mis := 0
-		for _, ifn := range ifns {
+		for _, ifn := range *ifns {
 			if _, ok := lns[ifn]; ok {
 				// Already have symlink
 				delete(lns, ifn)
