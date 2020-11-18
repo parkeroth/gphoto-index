@@ -159,6 +159,7 @@ func getOps(s *pl.Service, indexDirectory string, imageDirectory string, maxAlbu
 var (
 	indexDirFlag  = flag.String("indexdir", "", "where the index will be created")
 	imageDirFlag  = flag.String("imagedir", "", "where the images are located")
+	tokenPathFlag = flag.String("tokenpath", "token.json", "path to the OAth token")
 	maxAlbumsFlag = flag.Int("maxalbums", -1, "max number of albums to index")
 )
 
@@ -173,7 +174,7 @@ func main() {
 
 	log.Print("Starting indexer")
 
-	client := getClient(pl.PhotoslibraryReadonlyScope)
+	client := getClient(pl.PhotoslibraryReadonlyScope, *tokenPathFlag)
 	s, err := pl.New(client)
 	if err != nil {
 		log.Fatalf("Unable to create pl Client %v", err)

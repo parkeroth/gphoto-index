@@ -14,7 +14,7 @@ import (
 )
 
 // Retrieve a token, saves the token, then returns the generated client.
-func getClient(scope string) *http.Client {
+func getClient(scope string, tokenPath string) *http.Client {
 	b, err := ioutil.ReadFile("credentials.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
@@ -28,11 +28,10 @@ func getClient(scope string) *http.Client {
 	// The file token.json stores the user's access and refresh tokens, and is
 	// created automatically when the authorization flow completes for the first
 	// time.
-	tokFile := "token.json"
-	tok, err := tokenFromFile(tokFile)
+	tok, err := tokenFromFile(tokenPath)
 	if err != nil {
 		tok = getTokenFromWeb(config)
-		saveToken(tokFile, tok)
+		saveToken(tokenPath, tok)
 	}
 	return config.Client(context.Background(), tok)
 }
