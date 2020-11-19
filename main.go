@@ -77,8 +77,10 @@ func getDirectoryIndex(root string) map[string]map[string]bool {
 
 	out := make(map[string]map[string]bool)
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if path == root || strings.HasPrefix(filepath.Base(path), ".") {
+	albumDir := filepath.Join(root, "albums")
+
+	err := filepath.Walk(albumDir, func(path string, info os.FileInfo, err error) error {
+		if path == albumDir || strings.HasPrefix(filepath.Base(path), ".") {
 			return nil
 		}
 		if info.IsDir() {
@@ -103,6 +105,10 @@ func getOps(s *pl.Service, indexDirectory string, imageDirectory string, maxAlbu
 	// TODO: support date index (i.e., year or month)
 
 	var ops []operation
+	if op := maybeCreateRootAlbumDir(indexDirectory); op != nil {
+		ops = append(ops, *op)
+	}
+
 	for at, ifns := range getAlbumIndex(s, maxAlbums) {
 		lns, ok := di[at]
 		if !ok {

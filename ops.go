@@ -11,6 +11,9 @@ type operation interface {
 	log() string
 }
 
+type createRootAlbumDirectory struct {
+}
+
 type createAlbumDirectory struct {
 	albumTitle string
 }
@@ -27,13 +30,36 @@ type removeAlbumLink struct {
 	albumTitle, filename string
 }
 
+func rootAlbumDir(root string) string {
+	return filepath.Join(root, "albums")
+}
+
+func albumDir(root string, album string) string {
+	return filepath.Join(rootAlbumDir(root), album)
+}
+
+// maybeCreateRootAlbumDir returns a pointer to an op if the directory doesn't alreayd exist
+func maybeCreateRootAlbumDir(root string) *createRootAlbumDirectory {
+	if _, err := os.Stat(rootAlbumDir(root)); err == nil {
+		return nil
+	}
+	return &createRootAlbumDirectory{}
+}
+
+func (o createRootAlbumDirectory) log() string {
+	return fmt.Sprintf("mkdir albums")
+}
+
+func (o createRootAlbumDirectory) run(dir string) error {
+	return os.Mkdir(rootAlbumDir(dir), os.ModePerm)
+}
+
 func (o createAlbumDirectory) log() string {
 	return fmt.Sprintf("mkdir %s", o.albumTitle)
 }
 
 func (o createAlbumDirectory) run(dir string) error {
-	d := filepath.Join(dir, o.albumTitle)
-	return os.Mkdir(d, os.ModePerm)
+	return os.Mkdir(albumDir(dir, o.albumTitle), os.ModePerm)
 }
 
 func (o removeAlbumDirectory) log() string {
@@ -41,8 +67,7 @@ func (o removeAlbumDirectory) log() string {
 }
 
 func (o removeAlbumDirectory) run(dir string) error {
-	d := filepath.Join(dir, o.albumTitle)
-	return os.Remove(d)
+	return os.Remove(filepath.Join(albumDir(dir, o.albumTitle)))
 }
 
 func (o addAlbumLink) log() string {
@@ -50,7 +75,7 @@ func (o addAlbumLink) log() string {
 }
 
 func (o addAlbumLink) run(dir string) error {
-	d := filepath.Join(dir, o.albumTitle, o.filename)
+	d := filepath.Join(albumDir(dir, o.albumTitle), o.filename)
 	return os.Symlink(o.imagePath, d)
 }
 
@@ -59,6 +84,6 @@ func (o removeAlbumLink) log() string {
 }
 
 func (o removeAlbumLink) run(dir string) error {
-	d := filepath.Join(dir, o.albumTitle, o.filename)
+	d := filepath.Join(albumDir(dir, o.albumTitle), o.filename)
 	return os.Remove(d)
 }
