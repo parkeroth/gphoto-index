@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"github.com/golang/glog"
 
 	pl "github.com/gphotosuploader/googlemirror/api/photoslibrary/v1"
 )
@@ -14,9 +14,9 @@ type albumKey struct {
 func getAlbums(s *pl.Service, ks []albumKey, pt string) ([]albumKey, error) {
 	alc := s.Albums.List().PageSize(50)
 	if pt == "" {
-		log.Print("Sending API call: initial album list")
+		glog.V(2).Info("Sending API call: initial album list")
 	} else {
-		log.Print("Sending API call: additional album list")
+		glog.V(2).Info("Sending API call: additional album list")
 		alc = alc.PageToken(pt)
 	}
 
@@ -32,7 +32,7 @@ func getAlbums(s *pl.Service, ks []albumKey, pt string) ([]albumKey, error) {
 	}
 
 	if alr.NextPageToken == "" {
-		log.Printf("Found %d albums", len(ks))
+		glog.V(1).Infof("Found %d albums", len(ks))
 		return ks, nil
 	}
 	return getAlbums(s, ks, alr.NextPageToken)
@@ -44,9 +44,9 @@ func getImageFilenames(s *pl.Service, ak albumKey, fns []string, pt string) ([]s
 		PageSize: 100,
 	}
 	if pt == "" {
-		log.Printf("Sending API call: initial image search for album: %s", ak.Title)
+		glog.V(2).Infof("Sending API call: initial image search for album: %s", ak.Title)
 	} else {
-		log.Printf("Sending API call: additional image search for album: %s %s", ak.Title, pt[len(pt)-8:])
+		glog.V(2).Infof("Sending API call: additional image search for album: %s %s", ak.Title, pt[len(pt)-8:])
 		sreq.PageToken = pt
 	}
 
@@ -59,7 +59,7 @@ func getImageFilenames(s *pl.Service, ak albumKey, fns []string, pt string) ([]s
 	}
 
 	if sresp.NextPageToken == "" {
-		log.Printf("Found %d images for album %s", len(fns), ak.Title)
+		glog.V(1).Infof("Found %d images for album %s", len(fns), ak.Title)
 		return fns, nil
 	}
 	return getImageFilenames(s, ak, fns, sresp.NextPageToken)

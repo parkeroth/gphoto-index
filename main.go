@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"log"
+	"github.com/golang/glog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,11 +12,11 @@ import (
 )
 
 func getAlbumIndex(s *pl.Service, maxAlbums int) map[string]*[]string {
-	log.Print("Getting album index")
+	glog.V(1).Info("Getting album index")
 
 	as, err := getAlbums(s, nil, "")
 	if err != nil {
-		log.Fatalf("Unable to call list: %v", err)
+		glog.Fatalf("Unable to call list: %v", err)
 	}
 
 	var wg sync.WaitGroup
@@ -24,12 +24,12 @@ func getAlbumIndex(s *pl.Service, maxAlbums int) map[string]*[]string {
 
 	for i, a := range as {
 		if maxAlbums > 0 && i > maxAlbums {
-			log.Printf("WARNING: reached max album count %d", maxAlbums)
+			glog.Warningf("Reached max album count %d", maxAlbums)
 			break
 		}
 		if _, ok := out[a.Title]; ok {
 			// TODO: handle duplicate album titles
-			log.Printf("WARNING: skipping duplicate album %s", a.Title)
+			glog.Warningf("Skipping duplicate album %s", a.Title)
 			continue
 		}
 
@@ -40,7 +40,7 @@ func getAlbumIndex(s *pl.Service, maxAlbums int) map[string]*[]string {
 			if err == nil {
 				*fns = ifns
 			} else {
-				log.Fatalf("Unable to call image search: %v", err)
+				glog.Fatalf("Unable to call image search: %v", err)
 			}
 			wg.Done()
 		}(a, &fns)
@@ -58,14 +58,14 @@ func getImageIndex(root string) map[string]string {
 		fn := filepath.Base(path)
 		if _, ok := out[fn]; ok {
 			// TODO: handle duplicate filenames
-			log.Printf("WARNING: skipping duplicate image %s", fn)
+			glog.Warningf("Skipping duplicate image %s", fn)
 			return nil
 		}
 		out[fn] = path
 		return nil
 	})
 	if err != nil {
-		log.Fatalf("Filed scanning paths: %v", err)
+		glog.Fatalf("Filed scanning paths: %v", err)
 	}
 
 	return out
@@ -73,7 +73,7 @@ func getImageIndex(root string) map[string]string {
 
 // getDirectoryIndex returns a map[directory]map[filename]bool
 func getDirectoryIndex(root string) map[string]map[string]bool {
-	log.Printf("Scanning local index")
+	glog.V(1).Infof("Scanning local index")
 
 	out := make(map[string]map[string]bool)
 
@@ -92,7 +92,7 @@ func getDirectoryIndex(root string) map[string]map[string]bool {
 		return nil
 	})
 	if err != nil {
-		log.Fatalf("Filed scanning paths: %v", err)
+		glog.Fatalf("Filed scanning paths: %v", err)
 	}
 
 	return out
@@ -133,10 +133,11 @@ func getOps(s *pl.Service, indexDirectory string, imageDirectory string, maxAlbu
 				})
 			} else {
 				mis += 1
+				glog.V(2).Infof("Missing %s for album %s", ifn, at)
 			}
 		}
 		if mis > 0 {
-			log.Printf("Missing %d images for album %s", mis, at)
+			glog.Infof("Missing %d images for album %s", mis, at)
 		}
 		for ln, _ := range lns {
 			ops = append(ops, removeAlbumLink{
@@ -172,26 +173,30 @@ var (
 func main() {
 	flag.Parse()
 	if *indexDirFlag == "" {
-		log.Fatalf("Please specify the index directory via --indexdir")
+		glog.Fatalf("Please specify the index directory via --indexdir")
 	}
 	if *imageDirFlag == "" {
-		log.Fatalf("Please specify the image directory via --imagedir")
+		glog.Fatalf("Please specify the image directory via --imagedir")
 	}
 
-	log.Print("Starting indexer")
+	glog.Info("Starting indexer")
 
 	client := getClient(pl.PhotoslibraryReadonlyScope, *tokenPathFlag)
 	s, err := pl.New(client)
 	if err != nil {
-		log.Fatalf("Unable to create pl Client %v", err)
+		glog.Fatalf("Unable to create pl Client %v", err)
 	} else {
-		log.Print("Established Photos API client.")
+		glog.Info("Established Photos API client.")
 	}
 
-	for _, o := range getOps(s, *indexDirFlag, *imageDirFlag, *maxAlbumsFlag) {
-		log.Printf("OP: %s", o.log())
+	os := getOps(s, *indexDirFlag, *imageDirFlag, *maxAlbumsFlag)
+	glog.Infof("Running %d ops", len(os))
+	for _, o := range os {
+		glog.V(2).Infof("OP: %s", o.log())
 		if err := o.run(*indexDirFlag); err != nil {
-			log.Printf("Failed running: %s", o.log())
+			glog.Errorf("Failed running: %s", o.log())
 		}
 	}
+
+	glog.Info("Done")
 }
