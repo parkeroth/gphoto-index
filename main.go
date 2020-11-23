@@ -36,7 +36,7 @@ func getAlbumIndex(s *pl.Service, maxAlbums int) map[string]*[]string {
 		wg.Add(1)
 		fns := []string{}
 		go func(a albumKey, fns *[]string) {
-			ifns, err := getImageFilenames(s, a, nil, "")
+			ifns, err := getImagesForAlbum(s, a, nil, "")
 			if err == nil {
 				*fns = ifns
 			} else {
@@ -51,17 +51,24 @@ func getAlbumIndex(s *pl.Service, maxAlbums int) map[string]*[]string {
 	return out
 }
 
-func getImageIndex(root string) map[string]string {
-	out := make(map[string]string)
+type downloadedImages struct {
+	pathIndex          map[string]string
+	duplicateFilenames map[string]bool
+}
+
+func getDownloadedImages(root string) *downloadedImages {
+	out := &downloadedImages{
+		pathIndex:          make(map[string]string),
+		duplicateFilenames: make(map[string]bool),
+	}
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		fn := filepath.Base(path)
-		if _, ok := out[fn]; ok {
-			// TODO: handle duplicate filenames
-			glog.Warningf("Skipping duplicate image %s", fn)
+		if _, ok := out.pathIndex[fn]; ok {
+			out.duplicateFilenames[fn] = true
 			return nil
 		}
-		out[fn] = path
+		out.pathIndex[fn] = path
 		return nil
 	})
 	if err != nil {
@@ -99,8 +106,20 @@ func getDirectoryIndex(root string) map[string]map[string]bool {
 }
 
 func getOps(s *pl.Service, indexDirectory string, imageDirectory string, maxAlbums int) []operation {
+	ibd, err := NewImagesByDate(s, -1)
+	if err != nil {
+		glog.Fatalf("Error getting images by date: %v", err)
+	}
+	ibd.VisitYears(func(y int) {
+		ibd.VisitMonths(y, func(y, m int) {
+			ibd.VisitDays(y, m, func(y, m, d int, fns []string) {
+				glog.Infof("DAYS: %d-%d-%d %d images", y, m, d, len(fns))
+			})
+		})
+	})
+
 	di := getDirectoryIndex(indexDirectory)
-	ips := getImageIndex(imageDirectory)
+	ips := getDownloadedImages(imageDirectory).pathIndex
 
 	// TODO: support date index (i.e., year or month)
 
